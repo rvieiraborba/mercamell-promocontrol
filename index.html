@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mercamell PromoControl • Gestão de eventos e sorteios</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="branding"><img src="/static/mercamell-logo.png" alt="Mercamell Ltda" class="brand-logo"><span class="appname">Promo<span>Control</span></span><small>Gestão de eventos & sorteios</small></div>
+    <nav class="nav" aria-label="Menu">
+      <button class="nav-btn selected" data-page="events"><span>▦</span> Eventos</button>
+      <div class="nav-label">EVENTO SELECIONADO</div>
+      <button class="nav-btn" data-page="dashboard"><span>◫</span> Visão geral</button>
+      <button class="nav-btn" data-page="people"><span>♙</span> Compradores</button>
+      <button class="nav-btn" data-page="purchases"><span>▤</span> Compras</button>
+      <button class="nav-btn" data-page="tickets"><span>＃</span> Números</button>
+      <button class="nav-btn" data-page="draw"><span>★</span> Sorteio</button>
+      <button class="nav-btn" data-page="settings"><span>⚙</span> Configurações</button>
+      <div class="nav-label">FERRAMENTAS</div>
+      <button class="nav-btn" data-page="backup"><span>⇩</span> Backup</button>
+    </nav>
+    <div class="side-footer"><span class="status-dot"></span> Dados salvos neste computador <small>Não exige conexão com a internet</small></div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div><div class="eyebrow" id="eventBreadcrumb">MERCAMELL • EVENTOS</div><h1 id="pageTitle">Meus eventos</h1></div>
+      <div class="header-right"><span id="modeFlag" class="tag">REAL</span><span id="eventFlag" class="tag tag-muted">Nenhum evento</span></div>
+    </header>
+    <div id="toast" role="status" aria-live="polite" class="toast hidden"></div>
+    <section id="content" class="page"></section>
+    <footer>Mercamell PromoControl v3.0 • armazenamento local • mantenha backups em local seguro.</footer>
+  </main>
+</div>
+<div id="drawModal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-label="Painel do sorteio"></div>
+<script defer src="/static/app.js"></script>
+<script defer src="/static/draw.js"></script>
+</body>
+</html>
