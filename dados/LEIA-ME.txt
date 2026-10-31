@@ -1,0 +1,1 @@
+Esta pasta armazena bancos SQLite locais. Nunca publique dados reais de compradores, compras, telefones ou apartamentos no GitHub.
