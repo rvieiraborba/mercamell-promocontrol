@@ -1,0 +1,79 @@
+MERCAMELL PROMOCONTROL — VERSÃO 3.0
+=================================
+
+SISTEMA LOCAL PARA WINDOWS | SEM INTERNET | PYTHON 3.9 OU MAIS RECENTE
+
+1) PRIMEIRO TESTE
+   - Extraia COMPLETAMENTE o arquivo ZIP para uma pasta nova no computador.
+   - Se for sua primeira instalação, instale o Python (já usado na v2).
+   - Feche qualquer janela da versão 2 antes de iniciar a versão 3.
+   - Dê dois cliques em TESTAR_DEMONSTRACAO_WINDOWS.bat.
+   - O sistema abrirá automaticamente no navegador.
+   - Para uso real, feche a demonstração e execute INICIAR_WINDOWS.bat.
+   - Não feche a janela preta enquanto estiver usando o sistema.
+
+2) ATUALIZAR DA V2 SEM PERDER COMPRADORES OU COMPRAS
+   1. Na v2, abra Backup e salve um backup JSON. Guarde-o fora da pasta do sistema.
+   2. Feche a janela da v2 (servidor Python). Nunca rode v2 e v3 ao mesmo tempo.
+   3. Extraia a v3 em uma NOVA pasta, sem apagar a pasta anterior.
+   4. Copie SOMENTE os arquivos de banco da pasta dados da v2 para a pasta dados da v3:
+      mercamell_promocontrol.db  (dados reais)
+      mercamell_demo.db          (dados de testes)
+      [copie apenas os arquivos que existirem]
+   5. Execute os atalhos .bat da v3. A migração do banco SQLite é automática:
+      a coluna Apartamento e o histórico de tentativas serão acrescentados.
+   6. Confirme nomes, transações e números antes de usar no evento.
+
+   ALTERNATIVA: na v3, em Backup > Restaurar, selecione o backup completo .json
+   exportado da v2 (atenção: RESTAURAR SUBSTITUI A BASE ATUAL DESTE AMBIENTE).
+   Os backups completos v2 e v3 são aceitos. Faça backup antes de restaurar.
+
+   IMPORTANTE: um arquivo salvo da v2 não deve ser aberto de novo pela v2 depois
+   de migrar para a v3. Não faça alterações em duas versões separadas da base.
+
+3) FUNCIONALIDADES
+   - Vários eventos, regras de participação e prêmios independentes.
+   - Cadastro por pessoa, com Nome, Telefone, Apartamento e Observações.
+   - Registro de compras acumuladas por pessoa, com ID da transação (até 100 caracteres).
+   - Números da sorte exclusivos, bônus por marca, teto por pessoa.
+   - Bloqueio de compras quando fecha o cadastro.
+   - Contagem regressiva configurável antes de cada sorteio: 0, 3, 5, 10, 15 segundos.
+   - Som configurável: nenhum, bipes ou bipes + celebração (áudio gerado no navegador).
+   - Tela de resultado com número grande, nome, apartamento (quando informado).
+   - CONFIRMAR GANHADOR: registra o prêmio definitivamente naquela apuração.
+   - RESORTEAR: registra o resultado anterior como recusado por ausência e sorteia
+     uma pessoa diferente. As recusadas não retornam nesta mesma apuração.
+   - Próximo prêmio somente depois de confirmar o vencedor atual.
+   - Tela final de todos os ganhadores e exportação de imagem PNG para compartilhamento.
+   - Imagem PNG mostra nome, número e prêmio; nunca inclui telefone nem apartamento.
+   - Cancelar apuração e reabrir: mantém integralmente cadastros, compras e números.
+     Desfaz resultados e tentativas; histórico de auditoria guarda os registros anulados.
+   - Cópia de segurança JSON de todos os eventos e exportação CSV por evento.
+
+4) EXEMPLO DO FLUXO DO SORTEIO
+   [Sorteio] -> Encerrar cadastro -> escolher contagem e som -> Iniciar sorteio.
+   Aguardar contagem -> popup com o número e nome.
+   Escolher Confirmar ou Resortear (ausente).
+   Ao confirmar, clicar Prosseguir para o próximo prêmio.
+   Depois do último, clicar Avançar para os ganhadores e Exportar imagem PNG.
+   O resultado pendente fica armazenado no banco, mesmo se fechar o navegador.
+
+5) ARMAZENAMENTO E CUIDADOS
+   dados/mercamell_promocontrol.db  - eventos reais
+   dados/mercamell_demo.db          - dados fictícios para teste
+   Somente neste computador; nenhum dado é enviado à internet.
+   Faça backup fora do computador antes do evento e antes de fechar o cadastro.
+   O navegador pode bloquear áudio se estiver mudo; teste os alto-falantes antes.
+   Número sorteado recusado é excluído da APURAÇÃO ATUAL por ausência.
+   Se prêmios já foram entregues, não cancele toda a apuração sem planejamento.
+   O método de sorteio efetivo deve ser compatível com o regulamento da promoção.
+   Utilize somente o sistema de apuração previsto e autorizado no regulamento.
+
+6) TESTES AUTOMATIZADOS
+   Abra o Prompt de Comando na pasta do sistema e execute:
+   python test_app.py
+   Todos os testes devem aparecer com status OK.
+
+7) OBSERVAÇÃO
+   A versão v3 é um pacote local em Python com interface web, NÃO um instalador .exe.
+   Não é necessária uma conta, hospedagem nem instalar pacotes de terceiros.
