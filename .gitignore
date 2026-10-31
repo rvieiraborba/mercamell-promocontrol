@@ -1,0 +1,26 @@
+# Dados pessoais e bancos de dados locais
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/dados/**
+!/dados/LEIA-ME.txt
+# Backups e arquivos exportados
+*backup*.json
+*.csv
+*.xlsx
+*.zip
+/exportacoes/
+/backups/
+# Ambiente local
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+.pytest_cache/
+.coverage
+.DS_Store
+Thumbs.db
