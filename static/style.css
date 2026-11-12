@@ -38,3 +38,22 @@
 .winner-info span{font-size:13px;color:#75532b;font-weight:750}
 .summary-hint{font-size:12px;color:#60776a;line-height:1.5}
 @media(max-width:600px){.draw-dialog-head{padding:12px}.draw-modal-mode{display:none}.draw-dialog-body{padding:24px 15px}.draw-dialog-actions{padding:14px;flex-direction:column}.draw-dialog-actions .btn{width:100%}.draw-studio{padding:19px}.draw-brand strong{font-size:18px}.draw-brand img{width:53px;height:49px}.winner-summary-row{gap:10px}.winner-rank{width:50px;height:56px;font-size:23px}}
+
+/* v3.1 — imagens dos prêmios e gravação em vídeo */
+.prize-upload-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0}
+.prize-upload-card{display:flex;flex-direction:column;gap:11px;padding:16px;background:#f6faf7;border:1px solid #d5e7d9;border-radius:13px;min-width:0}
+.prize-upload-card b{color:#244e31;line-height:1.35}
+.prize-upload-card .field input[type=file]{padding:9px;font-size:12px}
+.prize-upload-card .btn{align-self:flex-start}
+.prize-upload-preview,.prize-photo{display:block;object-fit:contain;background:white;border-radius:10px;border:1px solid #dae7db}
+.prize-upload-preview{width:100%;height:170px}
+.prize-photo{width:100%;max-height:180px;margin:12px 0}
+.prize-photo-empty{border:1px dashed #cedbd0;background:#fff;min-height:100px;display:grid;place-items:center;border-radius:9px;color:#839288;font-size:13px}
+.draw-prize-photo{max-width:210px;max-height:150px;object-fit:contain;display:block;margin:0 auto 9px;border-radius:12px;background:white}
+.summary-prize-photo{width:85px;height:77px;object-fit:contain;border:1px solid #dce8df;border-radius:10px;background:#fff;flex:none}
+.recording-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#ffffff0c;border:1px solid #82bc9a50;padding:14px;border-radius:11px;margin:16px 0 5px}
+.recording-text{display:flex;flex:1 1 240px;flex-direction:column;gap:5px}
+.recording-text strong{font-size:15px;color:#fff}
+.recording-text span{font-size:12px;color:#d8e6d9;line-height:1.5}
+.recording-controls .btn{white-space:normal}
+@media(max-width:720px){.summary-prize-photo{height:55px;width:63px}.recording-controls{align-items:stretch}.recording-controls .btn{width:100%}}

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Mercamell PromoControl 3.0 — multi-evento, local/offline, SQLite.
+"""Mercamell PromoControl 3.1 — multi-evento, local/offline, SQLite.
 Executa somente em 127.0.0.1. Requer Python 3.9+ sem pacotes externos.
 Sorteio aleatório LOCAL: usar para apuração apenas quando previsto no regulamento.
 """
 import csv
+import base64
+import binascii
 from contextlib import contextmanager
 import io
 import json
@@ -32,11 +34,12 @@ DEFAULT_PRIZES = ['Air fryer','Sanduicheira','Abridor elétrico de vinho']
 TABLES = {
     'events':['id','name','event_date','description','tiers_json','brands_json','bonus_count','max_tickets','prizes_json','frozen','archived','created_at'],
     'participants':['id','event_id','name','phone','apartment','note','created_at'],
-    'purchases':['id','event_id','participant_id','amount_cents','transaction_id','transaction_key','brands_json','created_at','voided_at'],
+    'purchases':['id','event_id','participant_id','amount_cents','transaction_id','transaction_key','brands_json','created_at','voided_at','event_seq'],
     'tickets':['id','event_id','participant_id','number','status','created_at','changed_at'],
     'winners':['id','event_id','prize_order','prize','ticket_id','participant_id','created_at'],
     'audit':['id','event_id','action','details','created_at'],
-    'draw_attempts':['id','event_id','prize_order','prize','ticket_id','participant_id','status','created_at','resolved_at']
+    'draw_attempts':['id','event_id','prize_order','prize','ticket_id','participant_id','status','created_at','resolved_at'],
+    'prize_images':['event_id','prize_order','data_url','updated_at']
 }
 
 def now(): return datetime.now().astimezone().isoformat(timespec='seconds')
@@ -73,7 +76,7 @@ def init_db():
          id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL REFERENCES events(id),
          participant_id INTEGER NOT NULL REFERENCES participants(id), amount_cents INTEGER NOT NULL CHECK(amount_cents>0),
          transaction_id TEXT NOT NULL, transaction_key TEXT NOT NULL, brands_json TEXT NOT NULL DEFAULT '[]',
-         created_at TEXT NOT NULL, voided_at TEXT);
+         created_at TEXT NOT NULL, voided_at TEXT, event_seq INTEGER NOT NULL DEFAULT 0);
         CREATE UNIQUE INDEX IF NOT EXISTS uq_tx_event ON purchases(event_id,transaction_key);
         CREATE INDEX IF NOT EXISTS idx_purchase_person ON purchases(event_id,participant_id);
         CREATE TABLE IF NOT EXISTS tickets (
@@ -98,19 +101,55 @@ def init_db():
          created_at TEXT NOT NULL,resolved_at TEXT);
         CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_attempt_event ON draw_attempts(event_id) WHERE status='PENDING';
         CREATE INDEX IF NOT EXISTS idx_attempts_event ON draw_attempts(event_id,prize_order,status);
+        CREATE TABLE IF NOT EXISTS prize_images (
+         event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+         prize_order INTEGER NOT NULL CHECK(prize_order BETWEEN 1 AND 10),
+         data_url TEXT NOT NULL, updated_at TEXT NOT NULL,
+         PRIMARY KEY(event_id,prize_order));
         ''')
         # Migração automática de arquivos SQLite criados nas versões anteriores.
         cols={r['name'] for r in c.execute('PRAGMA table_info(participants)')}
         if 'apartment' not in cols:
             c.execute("ALTER TABLE participants ADD COLUMN apartment TEXT NOT NULL DEFAULT ''")
+        purchase_cols={r['name'] for r in c.execute('PRAGMA table_info(purchases)')}
+        if 'event_seq' not in purchase_cols:
+            c.execute('ALTER TABLE purchases ADD COLUMN event_seq INTEGER NOT NULL DEFAULT 0')
+        assign_purchase_sequences(c)
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_event_seq ON purchases(event_id,event_seq) WHERE event_seq>0')
         if DEMO and c.execute('SELECT COUNT(*) FROM events').fetchone()[0]==0:
             event_id=insert_event(c,'Reinauguração Kiruna — DEMONSTRAÇÃO','2026-11-06','Dados fictícios para testar')
             for i,(name,amount,brands) in enumerate([('Ana Exemplo',2500,[]),('João Exemplo',5000,['Honey Cake']),('Carla Exemplo',8000,['Vittai']),('Pedro Exemplo',6000,[])]):
                 c.execute('INSERT INTO participants(event_id,name,phone,note,created_at) VALUES (?, ?,"","Fictício",?)',(event_id,name,now()))
                 pid=c.execute('SELECT last_insert_rowid()').fetchone()[0]
                 tx='DEMO'+str(i+1)
-                c.execute('INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at) VALUES (?,?,?,?,?,?,?)',(event_id,pid,amount,tx,tx,json.dumps(brands),now()))
+                c.execute('INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at,event_seq) VALUES (?,?,?,?,?,?,?,?)',(event_id,pid,amount,tx,tx,json.dumps(brands),now(),i+1))
                 reconcile(c,event_id,pid)
+
+def assign_purchase_sequences(c):
+    """Preenche sequências de bases antigas pela ordem de inclusão, sem reenumerar as existentes."""
+    max_by_event={r['event_id']:r['highest'] for r in c.execute(
+        'SELECT event_id,MAX(event_seq) AS highest FROM purchases WHERE event_seq>0 GROUP BY event_id')}
+    for row in c.execute('SELECT id,event_id FROM purchases WHERE event_seq<=0 ORDER BY event_id,id').fetchall():
+        eid=row['event_id'];seq=max_by_event.get(eid,0)+1
+        c.execute('UPDATE purchases SET event_seq=? WHERE id=?',(seq,row['id']))
+        max_by_event[eid]=seq
+
+def purchase_code(event_id,sequence):
+    return f'{int(event_id):03d}-{int(sequence):06d}'
+
+def validate_prize_image(value):
+    if not isinstance(value,str) or len(value)>750_000:
+        raise ValueError('Imagem inválida ou muito grande (máximo 500 KB após compactação).')
+    found=re.fullmatch(r'data:image/(jpeg|png);base64,([a-zA-Z0-9+/]+={0,2})',value)
+    if not found:raise ValueError('Envie uma imagem JPG ou PNG válida.')
+    try:raw=base64.b64decode(found.group(2),validate=True)
+    except (ValueError,binascii.Error):raise ValueError('Imagem corrompida.')
+    if len(raw)>500_000 or not raw:raise ValueError('Imagem muito grande; limite 500 KB por prêmio.')
+    if found.group(1)=='jpeg' and not raw.startswith(b'\xff\xd8\xff'):
+        raise ValueError('Arquivo JPG inválido.')
+    if found.group(1)=='png' and not raw.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('Arquivo PNG inválido.')
+    return value
 
 def audit(c,event_id,action,details):
     c.execute('INSERT INTO audit(event_id,action,details,created_at) VALUES (?,?,?,?)',(event_id,action,json.dumps(details,ensure_ascii=False),now()))
@@ -211,7 +250,7 @@ def get_state(c):
         d['sales_cents']=c.execute('SELECT COALESCE(SUM(amount_cents),0) FROM purchases WHERE event_id=? AND voided_at IS NULL',(e['id'],)).fetchone()[0]
         d['winner_count']=c.execute('SELECT COUNT(*) FROM winners WHERE event_id=?',(e['id'],)).fetchone()[0]
         events.append(d)
-    return {'events':events,'demo':DEMO,'version':'3.0'}
+    return {'events':events,'demo':DEMO,'version':'3.1'}
 
 def get_event_state(c,event_id):
     e=get_event(c,event_id)
@@ -225,10 +264,12 @@ def get_event_state(c,event_id):
     for p in c.execute('''SELECT purchases.*,participants.name FROM purchases JOIN participants ON purchases.participant_id=participants.id
         WHERE purchases.event_id=? ORDER BY purchases.id DESC''',(event_id,)):
         purchases.append({'id':p['id'],'participant_id':p['participant_id'],'name':p['name'],'amount_cents':p['amount_cents'],
-        'transaction_id':p['transaction_id'],'brands':json.loads(p['brands_json']),'created_at':p['created_at'],'voided_at':p['voided_at']})
+        'transaction_id':p['transaction_id'],'event_seq':p['event_seq'],
+        'purchase_code':purchase_code(event_id,p['event_seq']),
+        'brands':json.loads(p['brands_json']),'created_at':p['created_at'],'voided_at':p['voided_at']})
     winners=[]
-    for w in c.execute('SELECT winners.*,participants.name,tickets.number FROM winners JOIN participants ON winners.participant_id=participants.id JOIN tickets ON winners.ticket_id=tickets.id WHERE winners.event_id=? ORDER BY prize_order',(event_id,)):
-        winners.append({'prize_order':w['prize_order'],'prize':w['prize'],'ticket_id':w['ticket_id'],'number':w['number'],'participant_id':w['participant_id'],'name':w['name'],'created_at':w['created_at']})
+    for w in c.execute('SELECT winners.*,participants.name,participants.apartment,tickets.number FROM winners JOIN participants ON winners.participant_id=participants.id JOIN tickets ON winners.ticket_id=tickets.id WHERE winners.event_id=? ORDER BY prize_order',(event_id,)):
+        winners.append({'prize_order':w['prize_order'],'prize':w['prize'],'ticket_id':w['ticket_id'],'number':w['number'],'participant_id':w['participant_id'],'name':w['name'],'apartment':w['apartment'],'created_at':w['created_at']})
     attempts=[]
     for a in c.execute('''SELECT a.*,p.name,t.number,p.apartment FROM draw_attempts a
         JOIN participants p ON p.id=a.participant_id JOIN tickets t ON t.id=a.ticket_id
@@ -237,7 +278,9 @@ def get_event_state(c,event_id):
           'participant_id':a['participant_id'],'name':a['name'],'apartment':a['apartment'],
           'number':a['number'],'status':a['status'],'created_at':a['created_at']})
     pending=next((a for a in attempts if a['status']=='PENDING'),None)
-    base.update({'participants':participants,'purchases':purchases,'winners':winners,'attempts':attempts,'pending_draw':pending,'metrics':{
+    prize_images={r['prize_order']:r['data_url'] for r in c.execute(
+        'SELECT prize_order,data_url FROM prize_images WHERE event_id=?',(event_id,))}
+    base.update({'prize_images':prize_images,'participants':participants,'purchases':purchases,'winners':winners,'attempts':attempts,'pending_draw':pending,'metrics':{
       'people':len(participants),'eligible':sum(p['entitled']>0 for p in participants),
       'active_people':sum(any(n['status']=='ACTIVE' for n in p['numbers']) for p in participants),
       'active_tickets':sum(sum(n['status']=='ACTIVE' for n in p['numbers']) for p in participants),
@@ -249,32 +292,37 @@ def backup_data():
     with LOCK:
         with db() as c:
             result={table:[dict(x) for x in c.execute('SELECT * FROM '+table)] for table in TABLES}
-    result.update({'format':'MERCAMELL_PROMOCONTROL_V3','demo':DEMO,'exported_at':now()})
+    result.update({'format':'MERCAMELL_PROMOCONTROL_V4','demo':DEMO,'exported_at':now()})
     return json.dumps(result,ensure_ascii=False,indent=2).encode('utf-8')
 
 def restore_data(payload):
-    if not isinstance(payload,dict) or payload.get('format') not in ('MERCAMELL_PROMOCONTROL_V2','MERCAMELL_PROMOCONTROL_V3'):
-        raise ValueError('Arquivo inválido: exige backup Mercamell PromoControl v2 ou v3.')
+    if not isinstance(payload,dict) or payload.get('format') not in ('MERCAMELL_PROMOCONTROL_V2','MERCAMELL_PROMOCONTROL_V3','MERCAMELL_PROMOCONTROL_V4'):
+        raise ValueError('Arquivo inválido: exige backup Mercamell PromoControl v2, v3 ou v4.')
     if payload.get('demo') is not DEMO:raise ValueError('Backup de demonstração e base real não podem ser misturados.')
     if len(json.dumps(payload,ensure_ascii=False))>20_000_000:raise ValueError('Backup muito grande.')
     is_v2=payload['format']=='MERCAMELL_PROMOCONTROL_V2'
+    is_legacy=payload['format']!='MERCAMELL_PROMOCONTROL_V4'
     for table,cols in TABLES.items():
-        rows=payload.get(table,[] if is_v2 and table=='draw_attempts' else None)
+        rows=payload.get(table,[] if (is_v2 and table=='draw_attempts') or (is_legacy and table=='prize_images') else None)
         if not isinstance(rows,list):raise ValueError('Backup incompleto: '+table)
         expected=set(cols)-({'apartment'} if is_v2 and table=='participants' else set())
+        if is_legacy and table=='purchases':expected.discard('event_seq')
         if any(not isinstance(row,dict) or set(row)!=expected for row in rows):raise ValueError('Campos inválidos em '+table)
     with LOCK:
         with db() as c:
             c.execute('BEGIN IMMEDIATE')
             try:
-                for table in ['draw_attempts','winners','tickets','purchases','participants','audit','events']:
+                for table in ['prize_images','draw_attempts','winners','tickets','purchases','participants','audit','events']:
                     c.execute('DELETE FROM '+table)
-                for table in ['events','participants','purchases','tickets','winners','audit','draw_attempts']:
+                for table in ['events','participants','purchases','tickets','winners','audit','draw_attempts','prize_images']:
                     cols=TABLES[table]
                     sql=f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join('?' for _ in cols)})"
                     for row in payload.get(table,[]):
                         if table=='participants' and is_v2:row={**row,'apartment':''}
+                        if table=='purchases' and is_legacy:row={**row,'event_seq':0}
+                        if table=='prize_images':validate_prize_image(row['data_url'])
                         c.execute(sql,[row[col] for col in cols])
+                if is_legacy:assign_purchase_sequences(c)
                 if c.execute('PRAGMA foreign_key_check').fetchall():raise ValueError('Backup com referências inválidas.')
                 c.commit()
             except Exception:
@@ -301,7 +349,7 @@ def import_v1_backup(b, event_name):
                 c.execute('INSERT INTO participants(event_id,name,phone,note,created_at) VALUES (?,?,?,?,?)',
                     (eid,name,phone,note,p.get('created_at') or now()))
                 people_map[old_id]=c.execute('SELECT last_insert_rowid()').fetchone()[0]
-            for p in b['purchases']:
+            for sequence,p in enumerate(b['purchases'],1):
                 old_id=int(p['id']);pid=people_map.get(int(p['participant_id']))
                 if not pid:raise ValueError('Compra v1 sem comprador válido.')
                 orig=str(p.get('receipt') or '').strip()
@@ -311,8 +359,8 @@ def import_v1_backup(b, event_name):
                 transactions.add(tx.casefold())
                 brands=json.loads(p.get('brands') or '[]')
                 if not isinstance(brands,list):raise ValueError('Marcas inválidas no backup v1.')
-                c.execute('INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at,voided_at) VALUES (?,?,?,?,?,?,?,?)',
-                    (eid,pid,int(p['amount_cents']),tx,tx.casefold(),json.dumps(brands,ensure_ascii=False),p.get('created_at') or now(),p.get('voided_at')))
+                c.execute('INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at,voided_at,event_seq) VALUES (?,?,?,?,?,?,?,?,?)',
+                    (eid,pid,int(p['amount_cents']),tx,tx.casefold(),json.dumps(brands,ensure_ascii=False),p.get('created_at') or now(),p.get('voided_at'),sequence))
             for t in b['tickets']:
                 old_id=int(t['id']);pid=people_map.get(int(t['participant_id']))
                 if not pid or old_id in ticket_map or old_id in tickets_number:raise ValueError('Números duplicados/inválidos no backup v1.')
@@ -353,6 +401,9 @@ def handle(action,payload):
                 settings=event_info(source)
                 newname=str(payload.get('name',source['name']+' — Cópia')).strip()
                 eid=insert_event(c,newname,str(payload.get('event_date','')),str(payload.get('description','')),settings)
+                for img in c.execute('SELECT prize_order,data_url FROM prize_images WHERE event_id=?',(source['id'],)).fetchall():
+                    c.execute('INSERT INTO prize_images(event_id,prize_order,data_url,updated_at) VALUES (?,?,?,?)',
+                       (eid,img['prize_order'],img['data_url'],now()))
                 audit(c,eid,'DUPLICATE_EVENT',{'source_event_id':source['id']})
                 result={'message':'Evento duplicado sem participantes ou compras.','event_id':eid}
             elif action in ('edit_event','archive_event'):
@@ -380,6 +431,11 @@ def handle(action,payload):
                         except ValueError:raise ValueError('Data inválida.')
                     c.execute('''UPDATE events SET name=?,event_date=?,description=?,tiers_json=?,brands_json=?,bonus_count=?,max_tickets=?,prizes_json=? WHERE id=?''',
                         (name,date,desc[:500],json.dumps(rules[0]),json.dumps(rules[1],ensure_ascii=False),rules[2],rules[3],json.dumps(rules[4],ensure_ascii=False),eid))
+                    # Uma foto é associada à posição E ao nome do prêmio para evitar trocas acidentais.
+                    for image in c.execute('SELECT prize_order FROM prize_images WHERE event_id=?',(eid,)).fetchall():
+                        pos=image['prize_order']-1
+                        if pos>=len(rules[4]) or pos>=len(old['prizes']) or rules[4][pos]!=old['prizes'][pos]:
+                            c.execute('DELETE FROM prize_images WHERE event_id=? AND prize_order=?',(eid,image['prize_order']))
                     audit(c,eid,'EDIT_EVENT',{'name':name})
                     result={'message':'Evento atualizado.'}
             else:
@@ -415,26 +471,45 @@ def handle(action,payload):
                     c.execute('UPDATE participants SET name=?,phone=?,apartment=?,note=? WHERE id=?',(name,phone,apartment,note,pid))
                     audit(c,eid,'EDIT_PERSON',{'person':pid})
                     result={'message':'Comprador atualizado.'}
+                elif action=='set_prize_image':
+                    if e['archived']:raise ValueError('Reative o evento antes de alterar imagens.')
+                    if e['frozen']:raise ValueError('Reabra o evento antes de alterar a imagem do prêmio.')
+                    prize_order=int(payload.get('prize_order',0))
+                    prizes=json.loads(e['prizes_json'])
+                    if not 1<=prize_order<=len(prizes):raise ValueError('Prêmio inválido.')
+                    image=payload.get('data_url')
+                    if image is None:
+                        c.execute('DELETE FROM prize_images WHERE event_id=? AND prize_order=?',(eid,prize_order))
+                        result={'message':'Imagem do prêmio removida.'}
+                    else:
+                        image=validate_prize_image(image)
+                        c.execute('INSERT INTO prize_images(event_id,prize_order,data_url,updated_at) VALUES (?,?,?,?) '
+                          'ON CONFLICT(event_id,prize_order) DO UPDATE SET data_url=excluded.data_url,updated_at=excluded.updated_at',
+                          (eid,prize_order,image,now()))
+                        result={'message':'Imagem do prêmio salva e incluída no backup.'}
+                    audit(c,eid,'SET_PRIZE_IMAGE',{'prize_order':prize_order,'removed':image is None})
                 elif action=='add_purchase':
                     ensure_open(e)
                     pid=int(payload.get('participant_id',0))
                     if not c.execute('SELECT 1 FROM participants WHERE id=? AND event_id=?',(pid,eid)).fetchone():raise ValueError('Comprador inválido para este evento.')
                     amount=parse_cents(payload.get('amount',''))
                     tx=str(payload.get('transaction_id','')).strip()
-                    if not 1<=len(tx)<=100 or not re.fullmatch(r'[a-zA-Z0-9._:/-]+',tx):
-                        raise ValueError('ID da transação obrigatório (1–100 caracteres: letras, números, ponto, hífen, /, _ ou :).')
-                    key=tx.casefold()
-                    if c.execute('SELECT 1 FROM purchases WHERE event_id=? AND transaction_key=?',(eid,key)).fetchone():
+                    if tx and (len(tx)>100 or not re.fullmatch(r'[a-zA-Z0-9._:/-]+',tx)):
+                        raise ValueError('ID externo inválido (máximo 100 caracteres: letras, números, ponto, hífen, /, _ ou :).')
+                    sequence=c.execute('SELECT COALESCE(MAX(event_seq),0)+1 FROM purchases WHERE event_id=?',(eid,)).fetchone()[0]
+                    key=tx.casefold() if tx else f'~auto/{eid}/{sequence}'
+                    if tx and c.execute('SELECT 1 FROM purchases WHERE event_id=? AND transaction_key=?',(eid,key)).fetchone():
                         raise ValueError('Este ID da transação já foi utilizado neste evento, inclusive se a compra foi estornada.')
                     brands=payload.get('brands',[])
                     if not isinstance(brands,list) or any(x not in json.loads(e['brands_json']) for x in brands):raise ValueError('Marca participante inválida.')
                     brands=list(dict.fromkeys(brands))
-                    c.execute('''INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at)
-                        VALUES (?,?,?,?,?,?,?)''',(eid,pid,amount,tx,key,json.dumps(brands,ensure_ascii=False),now()))
+                    c.execute('''INSERT INTO purchases(event_id,participant_id,amount_cents,transaction_id,transaction_key,brands_json,created_at,event_seq)
+                        VALUES (?,?,?,?,?,?,?,?)''',(eid,pid,amount,tx,key,json.dumps(brands,ensure_ascii=False),now(),sequence))
                     purchase=c.execute('SELECT last_insert_rowid()').fetchone()[0]
                     entitled=reconcile(c,eid,pid)
-                    audit(c,eid,'ADD_PURCHASE',{'purchase_id':purchase,'participant_id':pid,'transaction_id':tx,'amount_cents':amount,'brands':brands})
-                    result={'message':f'Compra registrada. Participante agora tem {entitled} número(s) ativo(s).'}
+                    code=purchase_code(eid,sequence)
+                    audit(c,eid,'ADD_PURCHASE',{'purchase_id':purchase,'purchase_code':code,'participant_id':pid,'transaction_id':tx,'amount_cents':amount,'brands':brands})
+                    result={'message':f'Compra {code} registrada. Participante agora tem {entitled} número(s) ativo(s).','purchase_code':code}
                 elif action=='void_purchase':
                     ensure_open(e)
                     purchase=int(payload.get('purchase_id',0))
@@ -519,15 +594,15 @@ def export_csv(event_id):
         for p in state['participants']:
             def nums(status):return ', '.join(str(n['number']).zfill(3) for n in p['numbers'] if n['status']==status)
             w.writerow([p['id'],p['name'],p['phone'],p['apartment'],f'{p["spent_cents"]/100:.2f}'.replace('.',','),'Sim' if p['qualifying_brand'] else 'Não',nums('ACTIVE'),nums('WINNER'),nums('REMOVED'),nums('VOID')])
-        w.writerow([]);w.writerow(['ID da transação','Comprador','Valor R$','Marcas','Status'])
+        w.writerow([]);w.writerow(['Código da compra','ID externo (opcional)','Comprador','Valor R$','Marcas','Status'])
         for p in state['purchases']:
-            w.writerow([p['transaction_id'],p['name'],f'{p["amount_cents"]/100:.2f}'.replace('.',','),', '.join(p['brands']),'Estornada' if p['voided_at'] else 'Válida'])
-        w.writerow([]);w.writerow(['Prêmio','Número','Contemplado','Data'])
-        for p in state['winners']:w.writerow([p['prize'],p['number'],p['name'],p['created_at']])
+            w.writerow([p['purchase_code'],p['transaction_id'],p['name'],f'{p["amount_cents"]/100:.2f}'.replace('.',','),', '.join(p['brands']),'Estornada' if p['voided_at'] else 'Válida'])
+        w.writerow([]);w.writerow(['Prêmio','Número','Contemplado','Apartamento','Data'])
+        for p in state['winners']:w.writerow([p['prize'],p['number'],p['name'],p['apartment'],p['created_at']])
         return ('\ufeff'+out.getvalue()).encode('utf-8')
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='Mercamell-PromoControl/3.0'
+    server_version='Mercamell-PromoControl/3.1'
     def log_message(self,fmt,*args):print('[%s] %s'%(self.log_date_time_string(),fmt%args))
     def reply(self,body,ctype='application/json; charset=utf-8',status=200,filename=None):
         self.send_response(status)
@@ -583,7 +658,7 @@ def main():
     try:server=ThreadingHTTPServer(('127.0.0.1',PORT),Handler)
     except OSError:
         print(f'A porta local {PORT} está ocupada. Feche uma execução anterior.');input('Enter para sair...');return
-    print('='*64+'\n MERCAMELL PROMOCONTROL 3.0'+('\n AMBIENTE DE TESTES' if DEMO else '\n AMBIENTE REAL')+'\n Endereço local: '+url+'\n Banco de dados: '+str(DB_FILE)+'\n Mantenha esta janela aberta durante o uso.\n'+'='*64)
+    print('='*64+'\n MERCAMELL PROMOCONTROL 3.1'+('\n AMBIENTE DE TESTES' if DEMO else '\n AMBIENTE REAL')+'\n Endereço local: '+url+'\n Banco de dados: '+str(DB_FILE)+'\n Mantenha esta janela aberta durante o uso.\n'+'='*64)
     threading.Timer(0.7,lambda:webbrowser.open(url)).start()
     try:server.serve_forever()
     except KeyboardInterrupt:pass
