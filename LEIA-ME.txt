@@ -1,79 +1,51 @@
-MERCAMELL PROMOCONTROL — VERSÃO 3.0
+MERCAMELL PROMOCONTROL — VERSÃO 3.1
 =================================
 
-SISTEMA LOCAL PARA WINDOWS | SEM INTERNET | PYTHON 3.9 OU MAIS RECENTE
+Sistema local de eventos e sorteios, com Python 3.9+ e navegador moderno.
 
-1) PRIMEIRO TESTE
-   - Extraia COMPLETAMENTE o arquivo ZIP para uma pasta nova no computador.
-   - Se for sua primeira instalação, instale o Python (já usado na v2).
-   - Feche qualquer janela da versão 2 antes de iniciar a versão 3.
-   - Dê dois cliques em TESTAR_DEMONSTRACAO_WINDOWS.bat.
-   - O sistema abrirá automaticamente no navegador.
-   - Para uso real, feche a demonstração e execute INICIAR_WINDOWS.bat.
-   - Não feche a janela preta enquanto estiver usando o sistema.
+INSTALAÇÃO E ATUALIZAÇÃO SEGURA
 
-2) ATUALIZAR DA V2 SEM PERDER COMPRADORES OU COMPRAS
-   1. Na v2, abra Backup e salve um backup JSON. Guarde-o fora da pasta do sistema.
-   2. Feche a janela da v2 (servidor Python). Nunca rode v2 e v3 ao mesmo tempo.
-   3. Extraia a v3 em uma NOVA pasta, sem apagar a pasta anterior.
-   4. Copie SOMENTE os arquivos de banco da pasta dados da v2 para a pasta dados da v3:
-      mercamell_promocontrol.db  (dados reais)
-      mercamell_demo.db          (dados de testes)
-      [copie apenas os arquivos que existirem]
-   5. Execute os atalhos .bat da v3. A migração do banco SQLite é automática:
-      a coluna Apartamento e o histórico de tentativas serão acrescentados.
-   6. Confirme nomes, transações e números antes de usar no evento.
+1) Faça backup JSON da versão 3.0 em "Backup e recuperação" e guarde em local seguro.
+2) Feche a janela Python da versão antiga.
+3) Extraia este ZIP para uma PASTA NOVA. NÃO APAGUE a pasta antiga.
+4) Para manter os dados reais, COPIE o arquivo dados/mercamell_promocontrol.db
+   da instalação antiga para a mesma pasta nesta versão. Para a demonstração,
+   copie também dados/mercamell_demo.db se desejar preservar os testes.
+5) Abra INICIAR_WINDOWS.bat (dados reais) ou TESTAR_DEMONSTRACAO_WINDOWS.bat
+   (dados fictícios). A migração automática acrescenta a sequência das compras
+   sem excluir compradores, compras nem números já emitidos.
+6) Confira os cadastros, relatórios, números e ganhadores antes de usar no evento.
 
-   ALTERNATIVA: na v3, em Backup > Restaurar, selecione o backup completo .json
-   exportado da v2 (atenção: RESTAURAR SUBSTITUI A BASE ATUAL DESTE AMBIENTE).
-   Os backups completos v2 e v3 são aceitos. Faça backup antes de restaurar.
+ALTERNATIVA: use Backup > Restaurar para importar um backup JSON antigo.
+ATENÇÃO: restauração SUBSTITUI a base do ambiente selecionado. São aceitos
+backups das versões 2, 3 e 4.
 
-   IMPORTANTE: um arquivo salvo da v2 não deve ser aberto de novo pela v2 depois
-   de migrar para a v3. Não faça alterações em duas versões separadas da base.
+NOVIDADES DA 3.1
+- Códigos automáticos das compras por evento: 001-000001, 001-000002,
+  002-000001 etc. IDs externos são opcionais. Compras estornadas mantêm o código.
+- Apartamento do ganhador na tela, no CSV e na imagem de resultados PNG.
+- Foto JPG/PNG de cada prêmio: Evento > Configurações > Fotos dos prêmios.
+  As fotos são opcionais, armazenadas no banco local e incluídas no backup JSON.
+- Gravação do sorteio: após fechar os cadastros, clique Iniciar gravação,
+  escolha compartilhar ESTA ABA e marque áudio se disponível. Após o último prêmio,
+  clique Finalizar e salvar vídeo. O navegador salvará um arquivo .webm em Downloads.
+  Teste a gravação com antecedência. Ela não faz parte do backup JSON.
 
-3) FUNCIONALIDADES
-   - Vários eventos, regras de participação e prêmios independentes.
-   - Cadastro por pessoa, com Nome, Telefone, Apartamento e Observações.
-   - Registro de compras acumuladas por pessoa, com ID da transação (até 100 caracteres).
-   - Números da sorte exclusivos, bônus por marca, teto por pessoa.
-   - Bloqueio de compras quando fecha o cadastro.
-   - Contagem regressiva configurável antes de cada sorteio: 0, 3, 5, 10, 15 segundos.
-   - Som configurável: nenhum, bipes ou bipes + celebração (áudio gerado no navegador).
-   - Tela de resultado com número grande, nome, apartamento (quando informado).
-   - CONFIRMAR GANHADOR: registra o prêmio definitivamente naquela apuração.
-   - RESORTEAR: registra o resultado anterior como recusado por ausência e sorteia
-     uma pessoa diferente. As recusadas não retornam nesta mesma apuração.
-   - Próximo prêmio somente depois de confirmar o vencedor atual.
-   - Tela final de todos os ganhadores e exportação de imagem PNG para compartilhamento.
-   - Imagem PNG mostra nome, número e prêmio; nunca inclui telefone nem apartamento.
-   - Cancelar apuração e reabrir: mantém integralmente cadastros, compras e números.
-     Desfaz resultados e tentativas; histórico de auditoria guarda os registros anulados.
-   - Cópia de segurança JSON de todos os eventos e exportação CSV por evento.
+USO
+- Registro de compras, acumuladas por pessoa, com bônus e limite de números.
+- Sorteio com contagem regressiva opcional, confirmação ou resorteio.
+- Um prêmio por participante.
+- Cancelar apuração preserva cadastros, compras e números.
+- O banco REAL fica em dados/mercamell_promocontrol.db;
+  o banco DEMO fica em dados/mercamell_demo.db.
+- Exportação de relatório CSV e backup JSON em Backup e recuperação.
 
-4) EXEMPLO DO FLUXO DO SORTEIO
-   [Sorteio] -> Encerrar cadastro -> escolher contagem e som -> Iniciar sorteio.
-   Aguardar contagem -> popup com o número e nome.
-   Escolher Confirmar ou Resortear (ausente).
-   Ao confirmar, clicar Prosseguir para o próximo prêmio.
-   Depois do último, clicar Avançar para os ganhadores e Exportar imagem PNG.
-   O resultado pendente fica armazenado no banco, mesmo se fechar o navegador.
+TESTES AUTOMATIZADOS
+Na pasta do sistema, execute no terminal: python test_app.py
 
-5) ARMAZENAMENTO E CUIDADOS
-   dados/mercamell_promocontrol.db  - eventos reais
-   dados/mercamell_demo.db          - dados fictícios para teste
-   Somente neste computador; nenhum dado é enviado à internet.
-   Faça backup fora do computador antes do evento e antes de fechar o cadastro.
-   O navegador pode bloquear áudio se estiver mudo; teste os alto-falantes antes.
-   Número sorteado recusado é excluído da APURAÇÃO ATUAL por ausência.
-   Se prêmios já foram entregues, não cancele toda a apuração sem planejamento.
-   O método de sorteio efetivo deve ser compatível com o regulamento da promoção.
-   Utilize somente o sistema de apuração previsto e autorizado no regulamento.
-
-6) TESTES AUTOMATIZADOS
-   Abra o Prompt de Comando na pasta do sistema e execute:
-   python test_app.py
-   Todos os testes devem aparecer com status OK.
-
-7) OBSERVAÇÃO
-   A versão v3 é um pacote local em Python com interface web, NÃO um instalador .exe.
-   Não é necessária uma conta, hospedagem nem instalar pacotes de terceiros.
+CUIDADOS
+- Não suba bancos de dados, fotos pessoais, vídeos ou backups no GitHub.
+- Salve cópias de segurança fora do computador utilizado no evento.
+- O vídeo pode conter nomes e apartamentos; compartilhe apenas com moradores
+  autorizados. O áudio do vídeo depende da permissão de captura do navegador.
+- Use a modalidade de apuração prevista no regulamento aplicável.
