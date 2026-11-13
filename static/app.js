@@ -173,19 +173,47 @@ document.addEventListener('change',ev=>{if(ev.target.matches('#countdownSeconds,
 load().catch(ex=>notify('Não foi possível abrir o sistema: '+ex.message,true));
 
 async function compressPrizeImage(file){
- if(!['image/jpeg','image/png'].includes(file.type))throw Error('Use JPG ou PNG.');
+ if(!file)throw Error('Selecione uma foto.');
+ if(!['image/jpeg','image/png'].includes(file.type))throw Error('Formato não suportado. Selecione um JPG ou PNG verdadeiro. Fotos HEIC/WEBP precisam ser convertidas antes.');
+ if(!file.size)throw Error('O arquivo está vazio. Escolha outra imagem.');
  if(file.size>16_000_000)throw Error('Selecione uma foto com até 16 MB.');
- const src=URL.createObjectURL(file);
+ let img=null;
  try{
-  const img=new Image();img.src=src;
-  await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(Error('Não foi possível abrir a imagem.'))});
-  const scale=Math.min(1,900/img.naturalWidth,700/img.naturalHeight);
-  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));
-  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  // Prefira o decodificador nativo; ele não depende do carregamento de uma URL temporária.
+  if(typeof createImageBitmap==='function'){
+   try{img=await createImageBitmap(file)}catch(_){/* Tenta o carregamento tradicional abaixo. */}
+  }
+  if(!img){
+   const url=URL.createObjectURL(file);
+   try{
+    img=await new Promise((resolve,reject)=>{
+     const element=new Image();
+     // Os eventos precisam ser registrados ANTES de informar a origem da imagem.
+     element.onload=()=>resolve(element);
+     element.onerror=()=>reject(Error('O navegador não conseguiu decodificar este arquivo.'));
+     element.src=url;
+    });
+   }finally{URL.revokeObjectURL(url)}
+  }
+  const width=img.width||img.naturalWidth, height=img.height||img.naturalHeight;
+  if(!width||!height)throw Error('A imagem não possui dimensões válidas.');
+  const scale=Math.min(1,900/width,700/height);
+  const c=document.createElement('canvas');c.width=Math.max(1,Math.round(width*scale));c.height=Math.max(1,Math.round(height*scale));
+  const ctx=c.getContext('2d');
+  if(!ctx)throw Error('Não foi possível preparar a imagem no navegador.');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);
+  ctx.drawImage(img,0,0,c.width,c.height);
   for(const quality of [.85,.72,.58,.4]){
    const data_url=c.toDataURL('image/jpeg',quality);
    if((data_url.length-23)*.75<=500000)return data_url;
   }
   throw Error('Imagem ficou muito grande mesmo após compactação. Use uma foto menor.');
- }finally{URL.revokeObjectURL(src)}
+ }catch(ex){
+  if(/decodificar|dimensões válidas|decode|image format/i.test(String(ex.message))){
+   throw Error('O arquivo selecionado não pôde ser aberto como JPG ou PNG. Abra a foto no Paint, use “Salvar como” → JPEG ou PNG e tente novamente.');
+  }
+  throw ex;
+ }finally{
+  if(img&&typeof img.close==='function')img.close();
+ }
 }
